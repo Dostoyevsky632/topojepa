@@ -208,15 +208,3 @@ Useful modules:
 
 ---
 
-## References
-
-- Assran et al., **Joint Embedding Predictive Architectures (JEPA)**
-- Persistent homology and topology-aware learning methods
-- This repository’s paper draft and outline files
-
----
-
-## Notes
-
-- If you want a paper-style README, the best workflow is to export the paper figures into `assets/` and then update the image paths in this document.
-- If you want, I can also help you generate a **more polished README with badges, diagrams, and a usage table**.
