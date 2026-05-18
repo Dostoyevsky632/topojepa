@@ -1,0 +1,181 @@
+# ============================================================
+# TopoJEPA 配置: 道路损伤检测 (RDD)
+#
+# 命名规则: 配置 key 与构造器参数名完全一致
+# ============================================================
+
+# --- 模型 ---
+model:
+  backbone_type: "yolo_backbone"         # VisualEncoder: "vit" | "yolo_backbone"
+  pretrained_path: "yolo11l.pt"
+  embed_dim: 768                          # 共享嵌入空间维度
+  freeze: true                            # VisualEncoder.freeze (Stage1 全冻结)
+  stage2_unfreeze_layers: 6               # Stage2: 解冻 backbone 最后 N 层 (微调检测特征)
+  tokenizer_name: "all-MiniLM-L6-v2"  # TopoJEPA.tokenizer_name (离线本地路径)
+  task_type: "detection"                  # Stage2 任务类型: "detection" (RDD) 或 "segmentation" (DRIVE/Inria), 互斥
+
+  predictor:
+    # EmbeddingPredictor 构造器参数名
+    visual_dim: 768                       # = model.embed_dim
+    predictor_dim: 512                    # predictor 内部维度
+    output_dim: 768                       # = model.embed_dim
+    depth: 6
+    num_heads: 8
+    mlp_ratio: 4.0
+    max_query_tokens: 128
+    max_visual_tokens: 512               # 显存保护: 将视觉 token 压缩到该上限
+    use_bidirectional_attn: true
+    dropout: 0.0
+
+  text_encoder:
+    # TextEncoder 构造器参数名
+    model_name: "all-MiniLM-L6-v2"
+    embed_dim: 768                        # = model.embed_dim
+    max_length: 128
+    freeze_base: false
+    lr_multiplier: 0.05
+
+  topo_branch:
+    # TopologicalBranch 构造器参数名
+    embed_dim: 768                        # = model.embed_dim
+    max_homology_dim: 1
+    max_points: 128                       # = max_points
+    persistence_threshold: 0.01
+    vectorization_method: "landscape"     # = vectorization_method
+    vectorization_dim: 64
+
+  detection_neck:
+    # DetectionNeck 构造器参数名 (Stage 2 才启用, FPN 特征融合)
+    fpn_channels: 256                       # Neck 统一通道数
+
+  detection_head:
+    # DetectionHead 构造器参数名 (Stage 2 才启用, RDD 检测)
+    in_channels: [512, 512, 512]          # 与当前 visual_encoder feature layers 对齐 (Neck 输出会覆盖)
+    num_classes: 5
+    reg_max: 16
+
+  segmentation_head:
+    # SegmentationHead 构造器参数名 (Stage 2 才启用, DRIVE/Inria 分割)
+    # 注: RDD 不使用分割头, 此处仅为配置模板
+    in_channels: [512, 512, 512]
+    num_classes: 1                         # 二值分割
+    fpn_channels: 256
+
+# --- 损失 ---
+loss:
+  jepa:
+    # JEPALoss 构造器参数名
+    loss_type: "infonce"
+    temperature: 0.07
+    reg_coeff: 0.0
+    label_smoothing: 0.0
+
+  topo:
+    # TopologicalLoss 构造器参数名
+    # 论文完整三项: fidelity + preserve + collapse
+    loss_components: ["fidelity", "preserve", "collapse"]
+    wasserstein_order: 2
+    use_sliced_wasserstein: true
+    num_slices: 20                            # 20 slices 已足够近似 (原 50, 降低 2.5x 计算量)
+    fidelity_weight: 1.0
+    preserve_weight: 0.5
+    collapse_weight: 0.3
+
+  detection:
+    # TopoDetectionLoss 构造器参数名
+    num_classes: 5
+    box_gain: 7.5
+    cls_gain: 3.0
+    dfl_gain: 1.5
+
+  segmentation:
+    # SegmentationLoss 构造器参数名
+    num_classes: 1
+    dice_weight: 1.0
+    bce_weight: 1.0
+
+  # 拓扑计算频率: 每 N 步真正计算一次 PH, 其余步复用缓存
+  # 1 = 每步都算 (最精确), 4 = 每 4 步算一次 (节省 ~75% 拓扑开销)
+  topo_every_n_steps: 4
+
+  combined:
+    # TopoJEPACriterion 构造器参数名
+    topo_weight_init: 0.01
+    topo_weight_final: 1.0
+    topo_warmup_steps: 2000
+    topo_adaptive: true                     # 论文: 自适应 α(t), warmup 后根据 L_topo/L_jepa 比值动态调节
+    topo_loss_ratio_target: 1.0             # 目标 L_topo / L_jepa 比值
+    topo_loss_ratio_ema: 0.99               # 比值 EMA 平滑系数
+    topo_weight_min: 0.01                   # 自适应下限
+    topo_weight_max: 2.0                    # 自适应上限 (防止早期 topo 主导)
+    topo_loss_max: 10.0                     # L_topo 值上限, 防止 PH 不稳定时梯度爆炸
+    jepa_weight: 1.0                         # JEPA 权重 (保持表示学习稳定性)
+    detect_weight: 3.0                      # 检测损失权重 (加权后 ~6.0 vs JEPA ~1.4, 比值 ~4:1)
+    seg_weight: 1.0                         # Stage2: 分割损失权重 (DRIVE/Inria)
+
+# --- 训练 ---
+training:
+  stage1:
+    epochs: 50
+    batch_size: 16
+    lr: 3.0e-4
+    final_lr: 1.0e-6
+    weight_decay: 0.04
+    warmup_epochs: 5
+    text_strategy: "spatial"
+
+  stage2:
+    epochs: 30
+    batch_size: 8
+    lr: 1.0e-4
+    final_lr: 1.0e-6
+    weight_decay: 0.04
+    warmup_epochs: 3
+    text_strategy: "spatial"
+    amp: false                               # Stage2 禁用 AMP: 解冻 BN + fp16 易 NaN
+    clip_grad: 1.0                           # Stage2 梯度裁剪更严格, 防止解冻层梯度爆炸
+    det_head_warmup_epochs: 2                # Stage2 前 N 个 epoch 只训练检测/分割头, 冻结其余参数
+
+  stage12:
+    # 合并训练: 从头开始同时训练表示学习 + 检测
+    epochs: 80                               # = stage1(50) + stage2(30), 合并后需更长
+    batch_size: 8                            # 含检测头, 显存受限
+    lr: 1.5e-4                               # 降低 base lr, 减轻检测梯度对 backbone 冲击
+    final_lr: 1.0e-6
+    weight_decay: 0.04
+    warmup_epochs: 5                         # LR warmup
+    text_strategy: "spatial"
+    amp: false                               # 安全起见关闭 AMP
+    clip_grad: 1.0
+    repr_warmup_epochs: 20                   # 前 20 个 epoch 检测权重 cosine 增长到 detect_weight
+
+  ema:
+    # ExponentialMovingAverage 构造器参数名
+    ema_range: [0.996, 1.0]               # = ema_range
+
+  optimizer: "adamw"
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+  clip_grad: 10.0
+  amp: true
+
+# --- 数据 ---
+data:
+  dataset: "rdd"
+  root: "RDD_SPLIT"
+  img_size: 1024
+  num_workers: 8
+  pin_memory: true
+  class_names:
+    0: "Longitudinal Crack"
+    1: "Transverse Crack"
+    2: "Alligator Crack"
+    3: "Pothole"
+    4: "Other Damage"
+
+# --- 输出 ---
+output:
+  dir: "runs/topojepa"
+  save_every: 10
+  log_every: 50
+  eval_every: 1
