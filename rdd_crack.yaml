@@ -1,0 +1,19 @@
+# Road Damage Detection (RDD) Dataset Configuration
+# Optimized for YOLO11l training
+
+
+path:   # 数据集根目录
+
+train: train/images  # 训练集图像路径 (相对于path)
+val: val/images      # 验证集图像路径 (相对于path)
+test: test/images    # 测试集图像路径 (相对于path)
+
+
+nc: 5  # 类别数量
+
+names:
+  0: D00  # Longitudinal Crack (纵向裂缝)
+  1: D10  # Transverse Crack (横向裂缝)
+  2: D20  # Alligator Crack (鳄鱼裂缝/网状裂缝)
+  3: D40  # Pothole (坑洞)
+  4: D44  # Other Damage (其他损伤)
