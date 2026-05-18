@@ -30,7 +30,6 @@ TopoJEPA follows a two-stage training pipeline:
 
 ## Paper figures
 
-If you want to use figures from the paper, save them in an `assets/` folder and reference them here.
 
 ### Architecture
 
@@ -38,19 +37,6 @@ If you want to use figures from the paper, save them in an `assets/` folder and 
 ![TopoJEPA architecture](assets/figure-architecture.png)
 ```
 
-### Training pipeline
-
-```md
-![TopoJEPA training pipeline](assets/figure-training-pipeline.png)
-```
-
-### Topological comparison
-
-```md
-![Persistence diagram comparison](assets/figure-persistence.png)
-```
-
-If you do not have the final figure files yet, you can leave the links as-is and add the images later.
 
 ---
 
