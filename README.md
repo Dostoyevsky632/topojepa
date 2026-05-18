@@ -33,9 +33,9 @@ TopoJEPA follows a two-stage training pipeline:
 
 ### Architecture
 
-```md
+
 ![TopoJEPA architecture](assets/figure-architecture.png)
-```
+
 
 
 ---
